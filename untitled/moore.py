@@ -3,77 +3,59 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits import mplot3d
-import numpy as np
 
 from matplotlib import animation
 
 # North = down, South = up, East = right, West = left - thats how i happened to write it.
-import copy
 
 
 class PPsystem:
 
-    def __init__(self, init_cond, L, T, r=2, mod = True, intro = 0, T_intro = 20, n_intro = 20, animate=True, VB=0.9):
+    def __init__(self, init_cond, L, T, r_g=2, r_a=2, r_b = 10, mod = False, intro = False, T_intro = 20, n_intro = 20):
         # initialize the AC-system
 
         self.mod = mod #if true - use the critter-modification
+        self.intro = intro
+        self.T_intro = T_intro
+        self.n_intro = n_intro
 
-        self.intro = intro # if 1/2/3 this species will be introduced later
-        self.T_intro = T_intro #at time
-        self.n_intro = n_intro #this many
+        # param
+        self.b_g = 0.6 #(1-p) i.e. b_g = 0.4
+        self.d_ga = 0.6
+        self.d_gb = 0.4#0.2
 
-        self.anim = animate #set to false if you do not intend to animate to save memory/time
+        self.b_b = 0.5#0.4
+        self.d_b = 0.3 #0 #0.3
+        self.d_ba = 0.4
 
+        self.d_vb = 0.999 #(1-p) i.e. d_vb=0.1
 
-        if mod:
-            self.b_g = 0.6 #(1-p) i.e. b_g = 0.4
-            self.d_ga = 0.6
-            self.d_gb = 0.2
-
-            self.b_b = 0.4
-            self.d_b = 0.3
-            self.d_ba = 0.4
-
-            self.d_vb = VB #(1-p) i.e. d_vb=0.001
-
-            self.b_a = 0.3
-            self.d_a = 0.2
-        else:
-            self.b_g = 0.6  # (1-p) i.e. b_g = 0.4
-            self.d_ga = 0.6
-            self.d_gb = 0.4
-
-            self.b_b = 0.7
-            self.d_b = 0.1
-            self.d_ba = 0.2
-
-            self.d_vb = 0.9  # (1-p) i.e. d_vb=0.001
-
-            self.b_a = 0.3
-            self.d_a = 0.2
+        self.b_a = 0.3
+        self.d_a = 0.2
 
 
 
-
-
-        self.proc_b = 0.9 #not relevant
-        self.proc_a = 0.9 #not relevant
+        self.proc_b = 0.9
+        self.proc_a = 0.9
 
 
         # constants
         self.L = L #size
-        self.r = r #depth of moore neighborhood
-        self.T = T #runtime
+        self.r_g = r_g #depth of moore neighborhood
+        self.r_a = r_a
+        self.r_b = r_b
+        self.T = T
 
 
         #will change
 
         self.dt = [0]
-        self.AC = copy.deepcopy(init_cond)  # initial matrix
+
+        self.AC = init_cond  # initial matrix
         self.gamma = []
         self.beta = []
         self.alpha = []
-        self.save_AC = [] #will save if animate = True
+        self.save_AC = []
 
         gamma = 0
         beta = 0
@@ -90,14 +72,14 @@ class PPsystem:
 
 
     def introduce(self):
-        """Function to introduce a type of agent into the system at a later time
-        will run at T_intro if intro=1,2 or 3"""
         s = self.intro
         a = self.n_intro
         i = 0
         j = 0
         while i < a:
             j += 1
+            #x = random.randint(0, self.n_intro)
+            #y = random.randint(0, self.n_intro)
             x = random.randint(0, self.L - 1)
             y = random.randint(0, self.L - 1)
             if self.AC[x][y] == 0:
@@ -108,7 +90,6 @@ class PPsystem:
 
 
     def attack(self,x,y):
-        """Function that takes care of the attack phase of the reaction step"""
         #0=0, gamma=1, beta=2, alpha=3, beta_full = 21, alpha_full = 31
 
         cell = self.AC[x][y]
@@ -154,8 +135,6 @@ class PPsystem:
         return new_state
 
     def reproduce(self, x,y, temp_AC):
-        """Function that takes care of the reproduction phase of the reaction step.
-        Will perform the step for one cell"""
         #0=0, gamma=1, beta=2, alpha=3, beta_full = 21, alpha_full = 31
         neighbors = [temp_AC[(x+1)%self.L][y], temp_AC[(x-1)%self.L][y], temp_AC[x][(y-1)%self.L], temp_AC[x][(y + 1) % self.L]]
 
@@ -186,8 +165,6 @@ class PPsystem:
         return new_state
 
     def natural_death(self, cell):
-        """Function that takes care of the natural deaths during the reproction step.
-        Will perform the step for one cell"""
         if cell == 3:
             P = self.d_a
             r = random.random()
@@ -224,8 +201,6 @@ class PPsystem:
 
 
     def reaction(self):
-        """Main function of the reaction step. Will loop over all cells twice. In the first loop,
-        it will call attack() for all cells not in state s=0. In the second loop it will call reproduce() if s=0 and natural deaths if s=beta/alpha"""
         self.alive_g = self.gamma[-1]
 
         temp_AC = [0] * self.L
@@ -249,11 +224,19 @@ class PPsystem:
                     self.AC[x][y] = self.natural_death(cell)
 
 
-    def get_quarters(self, x,y): #returns moore-neighbors for all 4 quarters
-        """help function during movement phase, will return moore and von neumann neighbors for a cell"""
+
+
+    def get_quarters(self, x,y,cell): #returns moore-neighbors for all 4 quarters
         n_NSEW = [[], [], [], []]
 
-        for i in range(1, self.r + 1):
+        if cell == 1:
+            R = self.r_g
+        elif cell == 2:
+            R = self.r_b
+        else:
+            R = self.r_a
+
+        for i in range(1, R + 1):
             for j in range(-i, i + 1):
                 y_list = [j, j, i, -i]
                 x_list = [i, -i, j, j]
@@ -270,7 +253,6 @@ class PPsystem:
 
 
     def movement(self):
-        """Main function for the movement phase"""
         backup_move = [0] * self.L #naming is a relic from when i thought i would keep alternative choices for walking in case of crash - but decided against it
         for i in range(self.L):     #this matrix keeps track and makes sure those who didnt get to walk will still be copied over without having moved
             backup_move[i] = [0] * self.L
@@ -289,7 +271,7 @@ class PPsystem:
                     continue
                 else:
                     step_nsew = [[(x + 1) % self.L, y], [x - 1, y], [x, y - 1], [x, (y + 1) % self.L]]  # these are the possible places that cell can go
-                    n_NSEW, NSEW = self.get_quarters(x, y)
+                    n_NSEW, NSEW = self.get_quarters(x, y,cell)
                     comp = []
                     dir = []
                     if cell == 1: #gamma - find which of step_nsew are possible and out of those - which is the best?
@@ -380,8 +362,32 @@ class PPsystem:
         self.AC = temp_AC
 
 
+    def integrate_print(self):
+        print("initial conditions:")
+        for lst in self.AC: #print initial conditions
+            print(lst)
+        for t in range(self.T + 1):
+            self.dt.append(t+1)
+
+            self.reaction()
+            print("reaction phase, t = ", self.dt[t])
+            for lst in self.AC:
+                print(lst)
+            self.movement()
+            print("movement phase, t = ", self.dt[t])
+            gamma = 0
+            beta = 0
+            alpha = 0
+            for lst in self.AC:
+                gamma += lst.count(1)
+                beta += lst.count(2)
+                alpha += lst.count(3)
+                print(lst)
+            self.gamma.append(gamma)
+            self.beta.append(beta)
+            self.alpha.append(alpha)
+
     def integrate(self):
-        """integrator funtion, will perform all steps."""
         for t in range(self.T + 1):
             if t == self.T_intro:
                 if self.intro:
@@ -399,18 +405,34 @@ class PPsystem:
             self.gamma.append(gamma)
             self.beta.append(beta)
             self.alpha.append(alpha)
-            if self.anim:
-                self.save_AC.append(self.AC)
 
-
-
+            self.save_AC.append(self.AC)
 
     def animate(self):
         """Function to animate the AC, this function will"""
         for t in range(self.T + 1):
+            if t == self.T_intro:
+                if self.intro:
+                    self.introduce()
+
+            self.dt.append(t+1)
+            self.reaction()
+            self.movement()
+
+            [gamma, beta, alpha] = [0,0,0]
+            for lst in self.AC:
+                gamma += lst.count(1)
+                beta += lst.count(2)
+                alpha += lst.count(3)
+            self.gamma.append(gamma)
+            self.beta.append(beta)
+            self.alpha.append(alpha)
+
+            # plot a 2d grid of the population
             plt.clf()
 
-            cmap = (mpl.colors.ListedColormap(['white', 'green', 'blue', 'red'])
+
+            cmap = (mpl.colors.ListedColormap(['white', 'green', 'blue', 'cyan'])
                     .with_extremes(over='0.25', under='0.75'))
 
             bounds = [0, 1, 2, 3,4]
@@ -418,14 +440,30 @@ class PPsystem:
 
             plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap))
 
-            plt.imshow(self.save_AC[t], cmap=cmap, interpolation='nearest')
+            #plt.imshow(self.AC, cmap=cmap, interpolation='nearest')
+            #plt.title("t = " + str(t))
+            #plt.pause(0.1)
+            #show animation of self.AC
+
+            plt.subplot(2, 1, 2)
+            plt.plot(self.dt, self.gamma, 'g')
+            plt.plot(self.dt, self.beta, 'b')
+            plt.plot(self.dt, self.alpha, 'r')
+            plt.xlabel('t')
+            plt.ylabel('Population')
+            plt.legend(["gamma", "beta", "alpha"])
+            plt.title("Population change over time")
+
+            # plot a 2d grid of the population
+            plt.subplot(2, 1, 1)
+            plt.imshow(self.AC, cmap=cmap, interpolation='nearest')
             plt.colorbar()
             plt.title("t = " + str(t))
 
             plt.pause(0.1)
 
 
-    def anim_and_population_plot(self):
+    def animate_test(self):
         for t in range(self.T + 1):
             plt.clf()
 
@@ -436,6 +474,11 @@ class PPsystem:
             norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
 
             plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap))
+
+            #plt.imshow(self.AC, cmap=cmap, interpolation='nearest')
+            #plt.title("t = " + str(t))
+            #plt.pause(0.1)
+            #show animation of self.AC
 
             plt.subplot(2, 1, 2)
             plt.plot(self.dt[:t], self.gamma[:t], 'g')
@@ -454,105 +497,56 @@ class PPsystem:
 
             plt.pause(0.1)
 
-
-    def plot_vs_2d(self, dont_plot):
-        if dont_plot == 1:
-            x = self.beta
-            y = self.alpha
-            xlab = "beta"
-            ylab = "alpha"
-        elif dont_plot == 2:
-            x = self.gamma
-            y = self.alpha
-            xlab = "gamma"
-            ylab = "alpha"
-        else:
-            x = self.gamma
-            y = self.beta
-            xlab = "gamma"
-            ylab = "beta"
-
-        t = self.dt
-
-        plt.scatter(x, y, c=t, cmap="summer")
-        plt.colorbar(label="time")
-        plt.xlabel(xlab)
-        plt.ylabel(ylab)
-        plt.show()
-
-
     def plot_population(self):
-        plt.plot(self.dt, self.gamma,self.dt,self.beta,self.dt,self.alpha)
+
+        # plt.plot(self.dt, self.gamma,self.dt,self.beta,self.dt,self.alpha)
+
+        leg = []
+
+        if sum(self.gamma) != 0:
+            leg.append("Gamma")
+            plt.plot(self.dt, self.gamma, "g")
+        if sum(self.beta) != 0:
+            leg.append("Beta")
+            plt.plot(self.dt, self.beta, "b")
+        if sum(self.alpha) != 0:
+            leg.append("Alpha")
+            plt.plot(self.dt, self.alpha, "r")
+
         plt.xlabel('t')
         plt.ylabel('Population')
-
-        plt.legend(["gamma", "beta", "alpha"])
+        # plt.legend(["gamma", "beta", "alpha"])
+        plt.legend(leg)
         plt.title("Population change over time")
         plt.show()
 
+
     def plot_vs_3d(self):
+
         # Creating figure
-        #fig = plt.figure(figsize=(10, 7))
-        #ax = plt.axes(projection="3d")
-        fig = plt.figure(figsize=(10,7))
-        ax = fig.add_subplot(111, projection='3d')
-        [x,y,z] = [self.gamma, self.beta, self.alpha]
-        ax.scatter(x, y, z, s=50, c='k')
+        fig = plt.figure(figsize=(10, 7))
+        ax = plt.axes(projection="3d")
+
         # Creating plot
-        #ax.scatter3D(self.gamma, self.beta, self.alpha, color="green")
-
-        ax.plot(x, z, 'ro', zdir='y', zs=max(y)+10, alpha=0.2)
-        ax.plot(y, z, 'go', zdir='x', zs=min(x)-10, alpha=0.2)
-        ax.plot(x, y, 'bo', zdir='z', zs=min(z)-10, alpha=0.2)
-
-        ax.set_xlim([min(x)-10, max(x)+10])
-        ax.set_ylim([min(y)-10, max(y)+10])
-        ax.set_zlim([min(z)-10, max(z)+10])
-
+        ax.scatter3D(self.gamma, self.beta, self.alpha, color="green")
         plt.title("")
-        ax.set_xlabel('$Gamma$')
-        ax.set_ylabel('$Beta$')
-        ax.set_zlabel('$Alpha$')
+        ax.set_xlabel('$\gamma$')
+        ax.set_ylabel('$ beta$')
+        ax.set_zlabel('$alpha$')
         # show plot
         plt.show()
 
-    def integrate_stable(self):
-        """integrator funtion, will perform all steps, and break if any species dies out"""
-        bad = 0
-        for t in range(self.T + 1):
-            if t == self.T_intro:
-                if self.intro:
-                    self.introduce()
 
-            self.dt.append(t+1)
-            self.reaction()
-            self.movement()
 
-            [gamma, beta, alpha] = [0,0,0]
-            for lst in self.AC:
-                gamma += lst.count(1)
-                beta += lst.count(2)
-                alpha += lst.count(3)
-            self.gamma.append(gamma)
-            self.beta.append(beta)
-            self.alpha.append(alpha)
-            #print(self)
 
-            if gamma == 0 or alpha == 0 or beta == 0:
-                if gamma == 0:
-                    bad = 1
-                elif alpha == 0:
-                    bad = 3
-                else:
-                    bad = 2
-                break
 
-        return t, bad
 
-def create_init(L = 10, g=0, b=0, a=0):
+
+
+def create_init(L = 10, g=3, b=3, a=3):
     init_cond = [0] * L
-    for j in range(len(init_cond)):
-        init_cond[j] = [0] * L
+    for i in range(len(init_cond)):
+        init_cond[i] = [0] * L
 
     i = 0
     while i < a:
@@ -580,70 +574,111 @@ def create_init(L = 10, g=0, b=0, a=0):
 
 
 
-### Below are functions to use. If mod=True system S4 will be used. If mod=False S1 will be used.
-# To change this, one must change the PP-class. Feel free to do so.
-# When plotting the S0 (gamma/alpha) set mod=True to get similar results to the text
 
 
-def introduce(L=40, T=200, g=100, b=0, a=100, mod=True):
-    """Function that will introduce the n=20 agents, of the one that is initially set to zero after t=20 seconds.
-    If you want to change t or n, change the following line:
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=True, intro=intro, T_intro=XXX, n_intro=XXX). Ugly solution since this is not used in the code """
-    if g == 0:
-        intro = 1
-    elif b == 0:
-        intro = 2
-    else:
-        intro = 3
+
+def testing():
+    init_cond = [[1, 0, 1, 2, 1], [1, 1, 0, 1, 2], [1, 1, 0, 0, 3], [2, 1, 0, 0, 0], [2, 1, 0, 0, 0]]
+    # init_cond = [[1,0,1],[0,1,0],[2,2,1]]
+    L = 5
+    T = 10
+    PP = PPsystem(init_cond, L, T)
+
+    PP.integrate_print()
+    #PP.plot_population()
+
+#testing()
+
+
+def just_gamma():
+    [L,T,g,b,a] = [40,300,50,0,0]
     init_cond = create_init(L,g,b,a)
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=True, intro=intro)
+    PP = PPsystem(init_cond, L, T)
     PP.integrate()
-    PP.anim_and_population_plot()
-
-
-
-def plot_VS(L=40, T=200, g=100, b=100, a=100, mod=True):
-    """Function that plots population portrait, set one of the populations to zero for 2d-plot."""
-    init_cond = create_init(L,g,b,a)
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=True)
-    if g == 0:
-        PP.plot_vs_2d(dont_plot=1)
-    elif b == 0:
-        PP.plot_vs_2d(dont_plot=2)
-    elif a == 0:
-        PP.plot_vs_2d(dont_plot=3)
-    else:
-        PP.plot_vs_3d()
-
-def animate(L=40, T=200, g=100, b=100, a=100, mod=True):
-    """show animation and population plot"""
-    init_cond = create_init(L,g,b,a)
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=True)
-    PP.integrate()
-    PP.anim_and_population_plot()
-
-def plot_pop(L=40, T=200, g=100, b=100, a=100, mod=True, until_extinction=False):
-    """plot only population plot, animate will be set to false, to save memory/time.
-    if until_extinction=True the integration will finish if one of the species dies out. <-- This will only work if all species are alive at t=0"""
-    init_cond = create_init(L,g,b,a)
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=False)
-    if until_extinction:
-        PP.integrate_stable()
-    else:
-        PP.integrate()
     PP.plot_population()
 
-
-def stability(L=20, T=1000, g=25, b=25, a=25, mod=False, VB=0.9):
-    """returns how long this system survived"""
+def just_alpha():
+    [L,T,g,b,a] = [40,300,0,0,50]
     init_cond = create_init(L,g,b,a)
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=False, VB=VB)
-    end, bad = PP.integrate_stable()
-    return end, bad
+    PP = PPsystem(init_cond, L, T)
+    PP.integrate()
+    PP.plot_population()
+
+def just_beta():
+    [L,T,g,b,a] = [40,300,0,100,0]
+    init_cond = create_init(L,g,b,a)
+    PP = PPsystem(init_cond, L, T)
+    #PP.integrate()
+    #PP.plot_population()
+    PP.animate()
+def no_beta():
+    [L,T,g,b,a] = [40,100,1000,0,600]
+    init_cond = create_init(L,g,b,a)
+    PP = PPsystem(init_cond, L, T)
+    PP.integrate()
+    #PP.plot_population()
+    PP.animate_test()
+
+def no_alpha():
+    [L,T,g,b,a] = [40,100,70,50,0]
+    init_cond = create_init(L,g,b,a)
+    PP = PPsystem(init_cond, L, T)
+    PP.integrate()
+    PP.plot_population()
+
+def no_gamma():
+    [L,T,g,b,a] = [40,300,0,70,50]
+    init_cond = create_init(L,g,b,a)
+    PP = PPsystem(init_cond, L, T)
+    PP.integrate()
+    #PP.plot_population()
+    #PP.plot_vs_3d()
+    PP.animate_test()
+
+
+def all_three():
+    [L,T,g,b,a] = [40,200,50,20,10]
+    init_cond = create_init(L,g,b,a)
+    PP = PPsystem(init_cond, L, T)
+    PP.integrate()
+    PP.plot_population()
+    #PP.plot_vs_3d()
+    #PP.animate_test()
+
+
+def moore():
+    [L, T, g, b, a] = [40, 300, 100, 100, 100]
+    plot_list = []
+    rad = []
+    for radius in range(2,10):
+        deaths = []
+        for i in range(10):
+            init_cond = create_init(L, g, b, a)
+            PP = PPsystem(init_cond, L, T, r_b=radius)
+            PP.integrate()
+            death = 0
+            for pop in PP.beta:
+                if pop != 0:
+                    death += 1
+            deaths.append(death)
+        print(sum(deaths)/10)
+        plot_list.append(sum(deaths)/10)
+        rad.append(radius)
+    plt.plot(rad, plot_list)
+    plt.xlabel('Moore radius of Beta')
+    plt.ylabel('Time of death')
+    # plt.legend(["gamma", "beta", "alpha"])
+    plt.title("Giving Beta an edge using Moore radius")
+    plt.show()
 
 
 
 
-
-
-plot_pop()
+#just_gamma()
+#just_alpha()
+#just_beta()
+#no_beta()
+#no_alpha()
+#no_gamma()
+#all_three()
+moore()

@@ -13,7 +13,7 @@ import copy
 
 class PPsystem:
 
-    def __init__(self, init_cond, L, T, r=2, mod = True, intro = 0, T_intro = 20, n_intro = 20, animate=True, VB=0.9):
+    def __init__(self, init_cond, L, T, r=2, mod = True, intro = 0, T_intro = 20, n_intro = 20, animate=True, VB=0.9, two=False):
         # initialize the AC-system
 
         self.mod = mod #if true - use the critter-modification
@@ -24,6 +24,7 @@ class PPsystem:
 
         self.anim = animate #set to false if you do not intend to animate to save memory/time
 
+        self.two = two
 
         if mod:
             self.b_g = 0.6 #(1-p) i.e. b_g = 0.4
@@ -538,14 +539,14 @@ class PPsystem:
             self.alpha.append(alpha)
             #print(self)
 
-            if gamma == 0 or alpha == 0 or beta == 0:
-                if gamma == 0:
+            if self.two:
+                if gamma == 0 or alpha == 0:
                     bad = 1
-                elif alpha == 0:
-                    bad = 3
-                else:
-                    bad = 2
-                break
+                    break
+            else:
+                if gamma == 0 or alpha == 0 or beta == 0:
+                    bad = 1
+                    break
 
         return t, bad
 
@@ -634,16 +635,79 @@ def plot_pop(L=40, T=200, g=100, b=100, a=100, mod=True, until_extinction=False)
     PP.plot_population()
 
 
-def stability(L=20, T=1000, g=25, b=25, a=25, mod=False, VB=0.9):
+def stability(L=20, T=1000, g=25, b=25, a=25, mod=False, VB=0.9, two = False):
     """returns how long this system survived"""
     init_cond = create_init(L,g,b,a)
-    PP = PPsystem(init_cond, L, T, mod=mod, animate=False, VB=VB)
+    PP = PPsystem(init_cond, L, T, mod=mod, animate=False, VB=VB, two=two)
     end, bad = PP.integrate_stable()
     return end, bad
 
 
 
+n = 50
+
+M_vec = []
+av_time = [[],[],[],[]]
+makes_it = [[],[],[],[]]
+logi = []
+
+for M in range(5,35):
+    ini = round(M*M/16)
+    END = [[],[],[],[]]
+    BAD = [[],[],[],[]]
+    for i in range(n):
+        #S0
+        end_time, bac_agent = stability(M,1000,ini,0,ini,True,0.9,True)
+        END[0].append(end_time)
+        BAD[0].append(bac_agent)
+
+        #S2
+        end_time, bac_agent = stability(M,1000,ini,ini,ini,False,0.9)
+        END[1].append(end_time)
+        BAD[1].append(bac_agent)
+
+        #S3 0.99
+        end_time, bac_agent = stability(M,1000,ini,ini,ini,True,0.99)
+        END[2].append(end_time)
+        BAD[2].append(bac_agent)
+
+        #S4
+        end_time, bac_agent = stability(M,1000,ini,ini,ini,True,0.9)
+        END[3].append(end_time)
+        BAD[3].append(bac_agent)
+
+    M_vec.append(M)
+    logi.append(0.04 * M ** 3)
+    for k in range(4):
+        av_time[k].append(sum(END[k])/n)
+        makes_it[k].append(BAD[k].count(0)/n)
 
 
 
-plot_pop()
+plt.figure()
+plt.loglog(M_vec,av_time[0], "x-", M_vec,av_time[1], "x-", M_vec,av_time[2], "x-", M_vec, av_time[3], "x-", M_vec, logi)
+
+plt.xlabel('M')
+plt.ylabel('[%]')
+
+plt.legend(["$\mathcal{S}_1$", "$\mathcal{S}_2$", "$\mathcal{S}_3$", "$\mathcal{S}_4$", "$c \cdot M^3$"])
+#plt.title("Average lenght of time before first species faces extinction")
+plt.show()
+
+
+
+
+
+print("s0 - times", av_time[0])
+print("s0 - makes it to 1000", makes_it[0])
+
+print("s2 - times", av_time[1])
+print("s2 - makes it to 1000", makes_it[1])
+
+print("s3 - times", av_time[2])
+print("s3 - makes it to 1000", makes_it[2])
+
+print("s4 - times", av_time[3])
+print("s4 - makes it to 1000", makes_it[3])
+
+print("M", M_vec)
